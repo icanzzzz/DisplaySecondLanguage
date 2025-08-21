@@ -2,6 +2,8 @@ package io.github.icanzzzz.DisplaySecondLanguage;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.main.GameConfig;
 import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -16,7 +18,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.Map;
 
 
@@ -25,13 +30,23 @@ import java.util.Map;
 public class ModClient {
     public static final String MODID;
     private static final File mcassetsDir;// get minecraft roaming file
-    private static final Map<String,Map<String,String>> langsIndexes;
+    private static final Map<String,Map<String,String>> langsIndex;
     private static final Map<String,String> defaultLangs;
     private static Map<String,String> langs;
 
     static {
         MODID = "displaysecondlanguage";
-        mcassetsDir  = new File(System.getenv("APPDATA"), ".minecraft/assets");
+
+        //get assets path
+        File dir = Minecraft.getInstance().gameDirectory;
+        for (; dir != null && dir.exists(); dir = dir.getParentFile()) {
+
+            // ".minecraft" before dir.getName().Because maybe dir.getName() is null,so use null.equals() can error
+            if(".minecraft".equals(dir.getName())) {
+                break;
+            }
+        }
+        mcassetsDir = new File(dir, "assets");
 
         // initialize langsIndexes
         // get language indexes file
@@ -41,25 +56,29 @@ public class ModClient {
             content = new String(
                     Files.readAllBytes(
                             new File(mcassetsDir, "indexes/17.json").toPath()
-                    )
+                    ),
+                    StandardCharsets.UTF_8  // must specify utf-8.Because there may be error code.
             );
         } catch (IOException e) {
             Mod.LOGGER.info(e.getMessage());
         }
 
-        if(content.isEmpty()){
-            Mod.LOGGER.info("index is empty");
+        if(content.length() <= 13) {
+            Mod.LOGGER.info("index or indexList is empty");
+            langsIndex = new HashMap<>();
         }
-        langsIndexes = new Gson().fromJson(
-                content.substring(12,content.length()-1),
-                new TypeToken<Map<String,Map<String,String>>>(){}.getType()
-        );
+        else{
+            langsIndex = new Gson().fromJson(
+                    content.substring(12,content.length()-1),
+                    new TypeToken<Map<String,Map<String,String>>>(){}.getType()
+            );
+        }
 
         // initialize defaultLangs
         InputStream inputStream = Mod.class.getResourceAsStream("/data/langs/en_us.json");  // get current version en_us.json
         if(inputStream == null) {
             Mod.LOGGER.info("not found default lang file");
-            defaultLangs = null;
+            defaultLangs = new HashMap<>();
         }
         else{
             defaultLangs = new Gson().fromJson(new InputStreamReader(inputStream),new TypeToken<Map<String,String>>(){}.getType());
@@ -72,15 +91,15 @@ public class ModClient {
     }
 
     public static Map<String, Map<String, String>> getLangsIndexes() {
-        return langsIndexes;
+        return langsIndex;
     }
 
     private static void loadSecondLanguage(String selectLang) {
         if(selectLang.equals("en_us"))  langs = defaultLangs;
-        if(langsIndexes.get("minecraft/lang/" + selectLang + ".json")==null)  return;
+        if(langsIndex.get("minecraft/lang/" + selectLang + ".json")==null)  return;
 
         String content="";
-        String hashValue = langsIndexes.get("minecraft/lang/" + selectLang + ".json").get("hash");
+        String hashValue = langsIndex.get("minecraft/lang/" + selectLang + ".json").get("hash");
         // get language file
         try{
             content = new String(
@@ -89,7 +108,8 @@ public class ModClient {
                                     mcassetsDir,
                                     "objects/" + hashValue.substring(0,2) + "/" + hashValue
                             ).toPath()
-                    )
+                    ),
+                    StandardCharsets.UTF_8  // must specify utf-8.Because there may be error code.
             );
         } catch (IOException e) {
             Mod.LOGGER.info("Failed to read lang file:" + e.getMessage());
@@ -103,8 +123,6 @@ public class ModClient {
 
     @SubscribeEvent
     static void onItemTooltip(ItemTooltipEvent event) {
-        if(langs == null || langs.isEmpty()) return;
-
         String transString = langs.get(event.getItemStack().getItem().getDescriptionId());
         if(transString==null || transString.isEmpty()) return;
 
