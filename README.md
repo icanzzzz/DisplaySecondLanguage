@@ -9,6 +9,6 @@ This is a website for searching: https://minecraft.wiki/w/Language
 This module has only been tested on the Win11 platform.
 And the second language is limited to the languages supported by the original translation and the original items.
 
-# Feedback 
+# Feedback
 
 If you have any better suggestions, please feel free to leave a message.
