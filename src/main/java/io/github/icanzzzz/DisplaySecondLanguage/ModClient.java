@@ -38,6 +38,7 @@ public class ModClient {
         mcHashResourceFIleDir = loadmcHashResourceFIle();
         langsIndex = loadlangsIndex();
         defaultLangs = loaddefaultLangs();
+        langs = defaultLangs;
     }
 
     public ModClient(ModContainer modContainer) {
