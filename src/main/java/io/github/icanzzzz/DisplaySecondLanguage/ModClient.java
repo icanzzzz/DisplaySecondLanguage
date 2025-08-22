@@ -158,7 +158,7 @@ public class ModClient {
     @SubscribeEvent
     static void onConfigLoad(ModConfigEvent.Loading event) {
         if(event.getConfig().getSpec() != Config.SPEC) return;
-        loadSecondLanguage(Config.selectlang.get());
+        langs = loadSecondLanguage(Config.selectlang.get());
     }
 
     @SubscribeEvent
