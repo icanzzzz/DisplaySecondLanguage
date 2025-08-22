@@ -48,6 +48,7 @@ public class ModClient {
 
         Gson gson = new Gson();
 
+        //initialize langsIndex
         langsIndex = gson.fromJson(
                 gson.toJson(jsonToData(
                         new File(mcassetsDir,"indexes/17.json"),
