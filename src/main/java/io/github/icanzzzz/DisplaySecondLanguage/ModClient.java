@@ -19,72 +19,96 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 
 @net.neoforged.fml.common.Mod(value = Mod.MODID, dist = Dist.CLIENT)
 @EventBusSubscriber(modid = Mod.MODID,value = Dist.CLIENT)
 public class ModClient {
-    public static final String MODID;
-    private static final File mcassetsDir;// get minecraft roaming file
+    public static final String MODID = "displaysecondlanguage";
+    private static final File mcHashResourceFIleDir;// get minecraft roaming file
     private static final Map<String,Map<String,String>> langsIndex;
     private static final Map<String,String> defaultLangs;
     private static Map<String,String> langs;
+    private static final Gson gson = new Gson();
 
     static {
-        MODID = "displaysecondlanguage";
-
-        //get assets path
-        File dir = Minecraft.getInstance().gameDirectory;
-        for (; dir != null && dir.exists(); dir = dir.getParentFile()) {
-
-            // ".minecraft" before dir.getName().Because maybe dir.getName() is null,so use null.equals() can error
-            if(".minecraft".equals(dir.getName())) {
-                break;
-            }
-        }
-        mcassetsDir = new File(dir, "assets");
-
-        Gson gson = new Gson();
-
-        //initialize langsIndex
-        langsIndex = gson.fromJson(
-                gson.toJson(jsonToData(
-                        new File(mcassetsDir,"indexes/17.json"),
-                        new TypeToken<Map<String,Map<String,Map<String,String>>>>(){}
-                ).get("objects")),
-                new TypeToken<Map<String,Map<String,String>>>(){}.getType()
-        );
-
-        // initialize defaultLangs
-        InputStream inputStream = Mod.class.getResourceAsStream("/data/langs/en_us.json");  // get current version en_us.json
-        if(inputStream == null) {
-            Mod.LOGGER.info("not found default lang file");
-            defaultLangs = new HashMap<>();
-        }
-        else{
-            defaultLangs = gson.fromJson(new InputStreamReader(inputStream),new TypeToken<Map<String,String>>(){}.getType());
-        }
-        langs = defaultLangs;
+        mcHashResourceFIleDir = loadmcHashResourceFIle();
+        langsIndex = loadlangsIndex();
+        defaultLangs = loaddefaultLangs();
     }
 
     public ModClient(ModContainer modContainer) {
         modContainer.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
     }
+    
+    private static File loadmcHashResourceFIle(){
+        File dir = Minecraft.getInstance().gameDirectory;
+        for (; dir != null && dir.exists(); dir = dir.getParentFile()) {
+
+            // ".minecraft" before dir.getName().Because maybe dir.getName() is null,so use null.equals() can error
+            if (".minecraft".equals(dir.getName())) {
+                break;
+            }
+        }
+        return new File(dir, "assets");
+    }
+    
+    private static Map<String, Map<String, String>> loadlangsIndex() {
+        // Version corresponding file query URL: https://zh.minecraft.wiki/w/%E6%95%A3%E5%88%97%E8%B5%84%E6%BA%90%E6%96%87%E4%BB%B6?variant=zh
+        File indexFile = new File(mcHashResourceFIleDir, "indexes/17.json");
+        Map<String, Map<String, Map<String, String>>> indexData = jsonToData(
+                indexFile,
+                new TypeToken<Map<String, Map<String, Map<String, String>>>>() {}
+        );
+
+        if (indexData != null && indexData.containsKey("objects")) {
+            return gson.fromJson(
+                    gson.toJson(indexData.get("objects")),
+                    new TypeToken<Map<String, Map<String, String>>>() {}
+            );
+        }
+        return null;
+    }
+
+    private static Map<String,String> loaddefaultLangs(){
+        String error = null;
+        Map<String,String> tempLangs = null;
+        try (JarFile jar = new JarFile(new File(Minecraft.getInstance().gameDirectory, "1.21.1-NeoForge.jar"));){
+            error = "jar.getJarEntry()";
+
+            JarEntry entry = jar.getJarEntry("assets/minecraft/lang/en_us.json");
+
+            if(entry != null && !entry.isDirectory()){
+                error = "jar.getInputStream()";
+                try(
+                        InputStream inputStream = jar.getInputStream(entry);
+                        InputStreamReader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8);
+                ){
+                    error = "InputStreamReader()";
+                    tempLangs = gson.fromJson(reader,new TypeToken<Map<String, String>>() {});
+                }
+            }
+        } catch (IOException e) {
+            Mod.LOGGER.info("Fail to "+ error + e.getMessage());
+        }
+        return tempLangs;
+    }
 
     public static Map<String, Map<String, String>> getLangsIndexes() {
         return langsIndex;
     }
-
-    private static void loadSecondLanguage(String selectLang) {
-        if(selectLang.equals("en_us"))  langs = defaultLangs;
-        if(langsIndex == null)  return;
-        if(langsIndex.get("minecraft/lang/" + selectLang + ".json")==null)  return;
+    
+    private static Map<String,String> loadSecondLanguage(String selectLang) {
+        if(selectLang.equals("en_us"))  return defaultLangs;
+        if(langsIndex == null)  return langs;
+        if(langsIndex.get("minecraft/lang/" + selectLang + ".json")==null)  return langs;
 
         String hashValue = langsIndex.get("minecraft/lang/" + selectLang + ".json").get("hash");
-        langs = jsonToData(
-                new File(mcassetsDir,"objects/" + hashValue.substring(0,2) + "/" + hashValue),
+        return jsonToData(
+                new File(mcHashResourceFIleDir,"objects/" + hashValue.substring(0,2) + "/" + hashValue),
                 new TypeToken<Map<String,String>>(){}
         );
     }
@@ -111,6 +135,12 @@ public class ModClient {
         return new Gson().fromJson(content, typeToken);
     }
 
+    private static <T> T jsonToData(String content, TypeToken<T> typeToken){
+        if(content==null) return null;
+
+        return new Gson().fromJson(content, typeToken);
+    }
+
     @SubscribeEvent
     static void onItemTooltip(ItemTooltipEvent event) {
         if(langs == null)   return;
@@ -133,6 +163,6 @@ public class ModClient {
     @SubscribeEvent
     static void onConfigReload(ModConfigEvent.Reloading event) {
         if(event.getConfig().getSpec() != Config.SPEC) return;
-        loadSecondLanguage(Config.selectlang.get());
+        langs = loadSecondLanguage(Config.selectlang.get());
     }
 }
